@@ -1,4 +1,4 @@
-module skyhook
+module github.com/skiy/skyhook
 
 go 1.13
 

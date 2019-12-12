@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/sirupsen/logrus"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -110,7 +111,7 @@ func (hook *SkyHook) Fire(entry *logrus.Entry) error {
 	hook.lock.Lock()
 	defer hook.lock.Unlock()
 
-	//log.SetOutput(ioutil.Discard)
+	log.SetOutput(ioutil.Discard)
 
 	if hook.writers != nil || hook.hasDefaultWriter {
 		return hook.ioWrite(entry)

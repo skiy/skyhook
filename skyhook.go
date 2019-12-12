@@ -111,13 +111,13 @@ func (hook *SkyHook) Fire(entry *logrus.Entry) error {
 	hook.lock.Lock()
 	defer hook.lock.Unlock()
 
-	log.SetOutput(ioutil.Discard)
-
 	if hook.writers != nil || hook.hasDefaultWriter {
 		return hook.ioWrite(entry)
 	} else if hook.paths != nil || hook.hasDefaultPath {
 		return hook.fileWrite(entry)
 	}
+
+	log.SetOutput(ioutil.Discard)
 
 	return nil
 }

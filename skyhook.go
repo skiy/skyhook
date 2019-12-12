@@ -13,7 +13,7 @@ import (
 )
 
 // We are logging to file, strip colors to make the output more readable.
-var defaultFormatter = &logrus.TextFormatter{DisableColors: true}
+var defaultFormatter = &logrus.TextFormatter{}
 
 // PathMap is map for mapping a log level to a file's path.
 // Multiple levels may share a file, but multiple files may not be used for one level.
@@ -23,8 +23,8 @@ type PathMap map[logrus.Level]string
 // Multiple levels may share a writer, but multiple writers may not be used for one level.
 type WriterMap map[logrus.Level]io.Writer
 
-// LfsHook is a hook to handle writing to local log files.
-type LfsHook struct {
+// SkyHook is a hook to handle writing to local log files.
+type SkyHook struct {
 	paths     PathMap
 	writers   WriterMap
 	levels    []logrus.Level
@@ -37,11 +37,11 @@ type LfsHook struct {
 	hasDefaultWriter bool
 }
 
-// NewHook returns new LFS hook.
+// NewHook returns new Sky hook.
 // Output can be a string, io.Writer, WriterMap or PathMap.
 // If using io.Writer or WriterMap, user is responsible for closing the used io.Writer.
-func NewHook(output interface{}, formatter logrus.Formatter) *LfsHook {
-	hook := &LfsHook{
+func NewHook(output interface{}, formatter logrus.Formatter) *SkyHook {
+	hook := &SkyHook{
 		lock: new(sync.Mutex),
 	}
 
@@ -50,22 +50,22 @@ func NewHook(output interface{}, formatter logrus.Formatter) *LfsHook {
 	switch output.(type) {
 	case string:
 		hook.SetDefaultPath(output.(string))
-		break
+
 	case io.Writer:
 		hook.SetDefaultWriter(output.(io.Writer))
-		break
+
 	case PathMap:
 		hook.paths = output.(PathMap)
-		for level := range output.(PathMap) {
+		for level := range hook.paths {
 			hook.levels = append(hook.levels, level)
 		}
-		break
+
 	case WriterMap:
 		hook.writers = output.(WriterMap)
-		for level := range output.(WriterMap) {
+		for level := range hook.writers {
 			hook.levels = append(hook.levels, level)
 		}
-		break
+
 	default:
 		panic(fmt.Sprintf("unsupported level map type: %v", reflect.TypeOf(output)))
 	}
@@ -75,43 +75,43 @@ func NewHook(output interface{}, formatter logrus.Formatter) *LfsHook {
 
 // SetFormatter sets the format that will be used by hook.
 // If using text formatter, this method will disable color output to make the log file more readable.
-func (hook *LfsHook) SetFormatter(formatter logrus.Formatter) {
+func (hook *SkyHook) SetFormatter(formatter logrus.Formatter) {
 	hook.lock.Lock()
 	defer hook.lock.Unlock()
+
 	if formatter == nil {
 		formatter = defaultFormatter
-	} else {
-		switch formatter.(type) {
-		case *logrus.TextFormatter:
-			textFormatter := formatter.(*logrus.TextFormatter)
-			textFormatter.DisableColors = true
-		}
 	}
 
 	hook.formatter = formatter
 }
 
 // SetDefaultPath sets default path for levels that don't have any defined output path.
-func (hook *LfsHook) SetDefaultPath(defaultPath string) {
+func (hook *SkyHook) SetDefaultPath(defaultPath string) {
 	hook.lock.Lock()
 	defer hook.lock.Unlock()
+
 	hook.defaultPath = defaultPath
 	hook.hasDefaultPath = true
 }
 
 // SetDefaultWriter sets default writer for levels that don't have any defined writer.
-func (hook *LfsHook) SetDefaultWriter(defaultWriter io.Writer) {
+func (hook *SkyHook) SetDefaultWriter(defaultWriter io.Writer) {
 	hook.lock.Lock()
 	defer hook.lock.Unlock()
+
 	hook.defaultWriter = defaultWriter
 	hook.hasDefaultWriter = true
 }
 
 // Fire writes the log file to defined path or using the defined writer.
 // User who run this function needs write permissions to the file or directory if the file does not yet exist.
-func (hook *LfsHook) Fire(entry *logrus.Entry) error {
+func (hook *SkyHook) Fire(entry *logrus.Entry) error {
 	hook.lock.Lock()
 	defer hook.lock.Unlock()
+
+	//log.SetOutput(ioutil.Discard)
+
 	if hook.writers != nil || hook.hasDefaultWriter {
 		return hook.ioWrite(entry)
 	} else if hook.paths != nil || hook.hasDefaultPath {
@@ -122,7 +122,7 @@ func (hook *LfsHook) Fire(entry *logrus.Entry) error {
 }
 
 // Write a log line to an io.Writer.
-func (hook *LfsHook) ioWrite(entry *logrus.Entry) error {
+func (hook *SkyHook) ioWrite(entry *logrus.Entry) error {
 	var (
 		writer io.Writer
 		msg    []byte
@@ -150,7 +150,7 @@ func (hook *LfsHook) ioWrite(entry *logrus.Entry) error {
 }
 
 // Write a log line directly to a file.
-func (hook *LfsHook) fileWrite(entry *logrus.Entry) error {
+func (hook *SkyHook) fileWrite(entry *logrus.Entry) error {
 	var (
 		fd   *os.File
 		path string
@@ -167,12 +167,17 @@ func (hook *LfsHook) fileWrite(entry *logrus.Entry) error {
 		}
 	}
 
-	dir := filepath.Dir(path)
-	os.MkdirAll(dir, os.ModePerm)
+	logPath := filepath.Dir(path)
+	if _, err := os.Stat(logPath); os.IsNotExist(err) {
+		if err := os.MkdirAll(logPath, os.ModePerm); err != nil {
+			log.Println("mkdir log path:", path, err)
+			return err
+		}
+	}
 
 	fd, err = os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0666)
 	if err != nil {
-		log.Println("failed to open logfile:", path, err)
+		log.Println("failed to open log file:", path, err)
 		return err
 	}
 	defer fd.Close()
@@ -184,11 +189,12 @@ func (hook *LfsHook) fileWrite(entry *logrus.Entry) error {
 		log.Println("failed to generate string for entry:", err)
 		return err
 	}
-	fd.Write(msg)
-	return nil
+
+	_, err = fd.Write(msg)
+	return err
 }
 
 // Levels returns configured log levels.
-func (hook *LfsHook) Levels() []logrus.Level {
+func (hook *SkyHook) Levels() []logrus.Level {
 	return logrus.AllLevels
 }

@@ -15,20 +15,24 @@ const unexpectedMsg = "This message should not be logged."
 // Matches the 'msg' of the output and deletes the tempfile.
 func TestLogEntryWritten(t *testing.T) {
 	log := logrus.New()
-	// The colors were messing with the regexp so I turned them off.
+
 	tmpfile, err := ioutil.TempFile("", "test_lfshook")
 	if err != nil {
 		t.Errorf("Unable to generate logfile due to err: %s", err)
 	}
 	fname := tmpfile.Name()
 	defer func() {
-		tmpfile.Close()
-		os.Remove(fname)
+		_ = tmpfile.Close()
+		_ = os.Remove(fname)
 	}()
+
 	hook := NewHook(PathMap{
 		logrus.InfoLevel: fname,
-	}, nil)
-	log.Hooks.Add(hook)
+	}, &logrus.TextFormatter{
+		DisableColors: true,
+	})
+
+	log.AddHook(hook)
 
 	log.Info(expectedMsg)
 	log.Warn(unexpectedMsg)

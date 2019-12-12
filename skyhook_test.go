@@ -1,4 +1,4 @@
-package lfshook
+package skyhook
 
 import (
 	"bytes"
